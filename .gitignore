@@ -6,6 +6,9 @@ __pycache__/
 # C extensions
 *.so
 
+# BDD
+*.bdd
+
 # Distribution / packaging
 .Python
 build/
