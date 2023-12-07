@@ -22,6 +22,37 @@ Table Utilisateur :
 conn = sqlite3.connect("bibliotheque.db")
 cur = conn.cursor()
 
+class StrategieRecherche:
+    """
+    Classe abstraite pour la stratégie de recherche
+    """
+    def search(self, library, query):
+        """
+        Méthode pour rechercher un livre
+        """
+        pass
+
+class StrategieRechercheTitre(StrategieRecherche):
+    """
+    Recherche par titre
+    """
+    def search(self, library, query):
+        return library.recherche_livre_titre(query)
+
+class StrategieRechercheAuteur(StrategieRecherche):
+    """
+    Recherche par auteur
+    """
+    def search(self, library, query):
+        return library.recherche_livre_auteur(query)
+
+class StrategieRechercheCategorie(StrategieRecherche):
+    """
+    Recherche par catégorie
+    """
+    def search(self, library, query):
+        return library.recherche_livre_categorie(query)
+
 class Bibliotheque:
     """
     Classe pour la bibliothèque
@@ -81,38 +112,27 @@ class Bibliotheque:
         print(f"Utilisateur : {livre[5]}")
         print("+------------------------------------+")
 
+        # Méthodes pour rechercher des livres par titre, auteur ou catégorie
     def recherche_livre_titre(self, titre):
         """
-        Méthode pour rechercher un livre par son titre
+        Pour rechercher un livre par titre
         """
-        cur.execute("SELECT * FROM livre WHERE titre LIKE ?", (f"%{titre}%",))
-        livre = cur.fetchone()
-        if livre:
-            self.afficher_livre(livre)
-        else:
-            print("Ce livre n'existe pas !")
+        cur.execute('SELECT * FROM livre WHERE titre LIKE ?', ('%' + titre + '%',))
+        return cur.fetchall()
 
     def recherche_livre_auteur(self, auteur):
         """
-        Méthode pour rechercher un livre par son auteur
+        Pour rechercher un livre par auteur
         """
-        cur.execute("SELECT * FROM livre WHERE auteur LIKE ?", (f"%{auteur}%",))
-        livre = cur.fetchone()
-        if livre:
-            self.afficher_livre(livre)
-        else:
-            print("Ce livre n'existe pas !")
+        cur.execute('SELECT * FROM livre WHERE auteur LIKE ?', ('%' + auteur + '%',))
+        return cur.fetchall()
 
     def recherche_livre_categorie(self, categorie):
         """
-        Méthode pour rechercher un livre par sa catégorie
+        Pour rechercher un livre par catégorie
         """
-        cur.execute("SELECT * FROM livre WHERE categorie LIKE ?", (f"%{categorie}%",))
-        livre = cur.fetchone()
-        if livre:
-            self.afficher_livre(livre)
-        else:
-            print("Ce livre n'existe pas !")
+        cur.execute('SELECT * FROM livre WHERE categorie LIKE ?', ('%' + categorie + '%',))
+        return cur.fetchall()
 
     def afficher_utilisateurs(self, mot):
         """
@@ -128,6 +148,20 @@ class Bibliotheque:
         for utilisateur in utilisateurs:
             print(utilisateur)
 
+class Observer:
+    """
+    Classe Observer pour notifier lorsqu'un livre recherché devient indisponible
+    """
+    def __init__(self):
+        self.livres_indisponibles = []
+
+    def update(self, livre):
+        """
+        Méthode pour mettre à jour la liste des livres indisponibles
+        """
+        if livre.est_emprunte:
+            self.livres_indisponibles.append(livre)
+
 class Livre:
     """
     Classe pour les livres
@@ -141,6 +175,7 @@ class Livre:
         self.categorie = categorie
         self.est_emprunte = False
         self.utilisateur = None
+        self.observers = []
 
     def ajouter_livre(self):
         """
@@ -195,7 +230,10 @@ class Livre:
                 
                 # Vérification que l'utilisateur n'est pas banni
                 cur.execute("SELECT est_banni FROM utilisateur WHERE id = ?", (id_utilisateur,))
-                est_banni = cur.fetchone()[0] == False if 0 else True
+                if cur.fetchone()[0] == 1:
+                    est_banni = True
+                else:
+                    est_banni = False
             
             except TypeError:
                 print("Cet utilisateur n'existe pas !")
@@ -213,6 +251,7 @@ class Livre:
                 print("Le livre a bien été emprunté !")
                 time.sleep(2)
                 os.system("clear")
+                self.notify_observers()
             
             else:
                 print("Cet utilisateur est banni !")
@@ -242,6 +281,7 @@ class Livre:
                 print("Le livre a bien été rendu !")
                 time.sleep(2)
                 os.system("clear")
+                self.notify_observers()
 
             else:
                 print("Ce livre n'est pas emprunté !")
@@ -252,6 +292,25 @@ class Livre:
             print("Ce livre n'existe pas !")
             time.sleep(4)
             os.system("clear")
+
+    def attach_observer(self, observer):
+        """
+        Méthode pour attacher un observer
+        """
+        self.observers.append(observer)
+
+    def detach_observer(self, observer):
+        """
+        Méthode pour détacher un observer
+        """
+        self.observers.remove(observer)
+
+    def notify_observers(self):
+        """
+        Méthode pour notifier les observers
+        """
+        for observer in self.observers:
+            observer.update(self)
 
 class LivreFactory:
     """
@@ -376,27 +435,34 @@ if __name__ == "__main__":
         match choix:
 
             case "1":
-                print("1. Rechercher un livre par son titre")
-                print("2. Rechercher un livre par son auteur")
-                print("3. Rechercher un livre par sa catégorie")
-                choix = input("Que voulez-vous faire ? ")
-    
-                if choix == "1":
-                    titre = input("Quel est le titre du livre ? ")
-                    bibliotheque.recherche_livre_titre(titre)
-    
-                elif choix == "2":
-                    auteur = input("Quel est l'auteur du livre ? ")
-                    bibliotheque.recherche_livre_auteur(auteur)
-    
-                elif choix == "3":
-                    categorie = input("Quelle est la catégorie du livre ? ")
-                    bibliotheque.recherche_livre_categorie(categorie)
-    
+                search_strategy = None
+                print('Choisissez une stratégie de recherche:')
+                print('1. Par titre')
+                print('2. Par auteur')
+                print('3. Par catégorie')
+
+                search_strategy_choice = input('Choisissez une option: ')
+
+                if search_strategy_choice == '1':
+                    search_strategy = StrategieRechercheTitre()
+
+                elif search_strategy_choice == '2':
+                    search_strategy = StrategieRechercheAuteur()
+
+                elif search_strategy_choice == '3':
+                    search_strategy = StrategieRechercheCategorie()
+
                 else:
-                    print("Ce choix n'existe pas !")
-                    time.sleep(2)
-                    os.system("clear")
+                    print('Option invalide. Veuillez réessayer.')
+                    continue
+
+                search_query = input('Entrez votre recherche: ')
+                results = search_strategy.search(bibliotheque, search_query)
+                print('Voici les résultats de la recherche :')
+                print('/-----------------------------------------/')
+                for result in results:
+                    print(result)
+                print('/-----------------------------------------/')
     
             case "2":
                 titre = input("Quel est le titre du livre ? ")
@@ -413,13 +479,13 @@ if __name__ == "__main__":
             case "4":
             
                 # Création d'une liste contenant les livres empruntés
-                cur.execute("SELECT titre FROM livre WHERE est_emprunte = 1")
+                cur.execute("SELECT titre FROM livre WHERE est_emprunte = 0")
                 livres_empruntes = cur.fetchall()
                 livres_empruntes = [livre[0] for livre in livres_empruntes]
     
                 # Affichage des livres empruntés
                 print("------------------------")
-                print("Liste des livres empruntés :")
+                print("Liste des livres disponibles :")
                 for livre in livres_empruntes:
                     print(livre)
                 print("------------------------")
